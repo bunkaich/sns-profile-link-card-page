@@ -1,98 +1,84 @@
-import React, { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom'
-import UserView from './components/UserView'
-import AdminView from './components/AdminView'
-import { Link as LinkType, ProfileData } from './types'
+import React, { useState, useEffect } from "react";
+import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+import UserView from "./components/UserView";
+import AdminView from "./components/AdminView";
+import { createClient } from "@supabase/supabase-js";
+import { Link, ProfileData } from "./types";
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 function App() {
-  const [title, setTitle] = useState<string>('SNSプロフィールリンクカード')
-  const [links, setLinks] = useState<LinkType[]>([])
+  const [title, setTitle] = useState<string>("SNSプロフィールリンクカード");
+  const [links, setLinks] = useState<Link[]>([]);
   const [profileData, setProfileData] = useState<ProfileData>({
-    userIcon: '',
-    userName: '',
-    userComment: '',
-  })
+    userIcon: "",
+    userName: "",
+    userComment: "",
+  });
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch('/.netlify/functions/getData')
-        if (!response.ok) {
-          throw new Error('データの取得に失敗しました')
-        }
-        const data = await response.json()
-        setTitle(data.title || 'SNSプロフィールリンクカード')
-        setLinks(data.links || [])
-        setProfileData(data.profileData || {
-          userIcon: '',
-          userName: '',
-          userComment: '',
-        })
-      } catch (error) {
-        console.error('データの読み込み中にエラーが発生しました:', error)
-      }
-    }
+    fetchData();
+  }, []);
 
-    fetchData()
-  }, [])
-
-  const saveData = async (newTitle: string, newLinks: LinkType[], newProfileData: ProfileData) => {
-    const data = {
-      title: newTitle,
-      links: newLinks,
-      profileData: newProfileData
-    }
-    
+  const fetchData = async () => {
     try {
-      const response = await fetch('/.netlify/functions/saveData', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data)
-      })
-      if (!response.ok) {
-        throw new Error('データの保存に失敗しました')
-      }
+      const { data, error } = await supabase
+        .from("profile_data")
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      setTitle(data.title || "SNSプロフィールリンクカード");
+      setLinks(data.links || []);
+      setProfileData({
+        userIcon: data.user_icon || "",
+        userName: data.user_name || "",
+        userComment: data.user_comment || "",
+      });
     } catch (error) {
-      console.error('データの保存中にエラーが発生しました:', error)
+      console.error("データの読み込み中にエラーが発生しました:", error);
     }
-  }
+  };
 
-  const addLink = (newLink: LinkType) => {
-    const newLinks = [...links, newLink]
-    setLinks(newLinks)
-    saveData(title, newLinks, profileData)
-  }
+  const saveData = async (
+    newTitle: string,
+    newLinks: Link[],
+    newProfileData: ProfileData
+  ) => {
+    try {
+      const { error } = await supabase.from("profile_data").upsert({
+        id: 1, // 常に同じIDを使用
+        title: newTitle,
+        links: newLinks,
+        user_icon: newProfileData.userIcon,
+        user_name: newProfileData.userName,
+        user_comment: newProfileData.userComment,
+      });
 
-  const updateLink = (index: number, updatedLink: LinkType) => {
-    const newLinks = [...links]
-    newLinks[index] = updatedLink
-    setLinks(newLinks)
-    saveData(title, newLinks, profileData)
-  }
+      if (error) throw error;
 
-  const deleteLink = (index: number) => {
-    const newLinks = links.filter((_, i) => i !== index)
-    setLinks(newLinks)
-    saveData(title, newLinks, profileData)
-  }
-
-  const updateProfileData = (newData: Partial<ProfileData>) => {
-    const updatedProfileData = { ...profileData, ...newData }
-    setProfileData(updatedProfileData)
-    saveData(title, links, updatedProfileData)
-  }
-
-  const updateTitle = (newTitle: string) => {
-    setTitle(newTitle)
-    saveData(newTitle, links, profileData)
-  }
+      // データを更新
+      setTitle(newTitle);
+      setLinks(newLinks);
+      setProfileData(newProfileData);
+    } catch (error) {
+      console.error("データの保存中にエラーが発生しました:", error);
+    }
+  };
 
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<UserView title={title} links={links} profileData={profileData} />} />
+        <Route
+          path="/"
+          element={
+            <UserView title={title} links={links} profileData={profileData} />
+          }
+        />
         <Route
           path="/admin"
           element={
@@ -100,17 +86,14 @@ function App() {
               title={title}
               links={links}
               profileData={profileData}
-              addLink={addLink}
-              updateLink={updateLink}
-              deleteLink={deleteLink}
-              updateProfileData={updateProfileData}
-              updateTitle={updateTitle}
+              saveData={saveData}
+              supabase={supabase}
             />
           }
         />
       </Routes>
     </Router>
-  )
+  );
 }
 
-export default App
+export default App;
